@@ -1,1 +1,1 @@
-# endura-fitness-app
+# endura-app
