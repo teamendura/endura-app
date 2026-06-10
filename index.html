@@ -874,7 +874,7 @@ function buildWarmupHTML() {
 }
 
 function loadWarmupVid() {
-  if (WARMUP.videoId === "kkxoWdwg1hc") { showToast("Add your YouTube video ID to WARMUP.videoId"); return; }
+  if (!WARMUP.videoId) { showToast("Add your YouTube video ID to WARMUP.videoId"); return; }
   document.getElementById("wuPlaceholder").style.display = "none";
   var f = document.getElementById("wuVidFrame"); f.style.display = "block";
   f.innerHTML = '<iframe src="https://www.youtube.com/embed/' + WARMUP.videoId + '?autoplay=1&rel=0&modestbranding=1" allow="autoplay;fullscreen" allowfullscreen></iframe>';
