@@ -34,25 +34,6 @@ const firebaseConfig = {
 const app  = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db   = getFirestore(app);
-     // — Tile settings loader —
-onAuthStateChanged(auth, async (user) => {
-  if (!user) return;
-  try {
-    const snap = await getDoc(doc(db, "coachSettings", "x8bJXFNLUUXKgA8wSCMLAHLJFsn1"));
-    if (!snap.exists()) return;
-    const athletes = snap.data().athletes || {};
-    const settings = athletes[user.uid] || athletes[user.email];
-    if (!settings?.tiles) return;
-    Object.entries(settings.tiles).forEach(([tileId, enabled]) => {
-      if (!enabled) {
-        const el = document.querySelector(`[data-tile="${tileId}"]`);
-        if (el) el.style.display = "none";
-      }
-    });
-  } catch (err) {
-    console.warn("Could not load tile settings", err);
-  }
-});
 
 // Expose to global scope so non-module functions can reach them
 window._enduraAuth = auth;
@@ -1170,21 +1151,21 @@ function renderRings() {
   var steps = h.steps || 0;
   var stLabel = steps >= 1000 ? (Math.round(steps/100)/10) + "k" : steps;
   var stGoalLabel = S.stepsGoal >= 1000 ? (Math.round(S.stepsGoal/100)/10) + "k" : S.stepsGoal;
-  html += '<div class="ring-card' + (steps >= S.stepsGoal ? " ring-done" : "") + '" data-tile="steps"onclick="openHabitModal(\'steps\')">';
+  html += '<div class="ring-card' + (steps >= S.stepsGoal ? " ring-done" : "") + '" onclick="openHabitModal(\'steps\')">';
   html += '<div class="ring-wrap">' + arcRingSVG(steps, S.stepsGoal) + '<div class="ring-center"><span class="ring-val">' + stLabel + '</span><span class="ring-unit">steps</span></div></div>';
   html += '<div class="ring-name">Steps</div>';
   html += '<div class="ring-cadence">' + stGoalLabel + '/day</div></div>';
 
   // Meditation
   var med = h.meditation || 0;
-  html += '<div class="ring-card' + (med >= S.meditationGoal ? " ring-done" : "") + '" data-tile="meditation"onclick="openHabitModal(\'meditation\')">';
+  html += '<div class="ring-card' + (med >= S.meditationGoal ? " ring-done" : "") + '" onclick="openHabitModal(\'meditation\')">';
   html += '<div class="ring-wrap">' + arcRingSVG(med, S.meditationGoal) + '<div class="ring-center"><span class="ring-val">' + med + '</span><span class="ring-unit">min</span></div></div>';
   html += '<div class="ring-name">Meditate</div>';
   html += '<div class="ring-cadence">' + S.meditationGoal + 'min/day</div></div>';
 
   // Workout week ring (3 segments)
   var wCount = Math.min(workoutsThisCalendarWeek(), 3);
-  html += '<div class="ring-card no-tap'data-tile="lifts" + (wCount >= 3 ? " ring-done" : "") + '">';
+  html += '<div class="ring-card no-tap' + (wCount >= 3 ? " ring-done" : "") + '">';
   html += '<div class="ring-wrap">' + segmentRingSVG(wCount, 3) + '<div class="ring-center"><span class="ring-val">' + wCount + '</span><span class="ring-unit">/ 3</span></div></div>';
   html += '<div class="ring-name">Lifts</div>';
   html += '<div class="ring-cadence">3x/week</div></div>';
@@ -1199,7 +1180,8 @@ function renderRings() {
     var todayDone = customHabitDoneToday(habit.id);
     // Use textContent-safe center label instead of injecting emoji into innerHTML
     var centerLabel = todayDone ? "&#10003;" : String(count);
-html += '<div class="ring-card' + (done ? " ring-done" : "") + '" data-tile="' + habit.id + '" onclick="toggleCustomHabit(\'' + habit.id +    html += '<div class="ring-wrap">' + segmentRingSVG(count, goal) + '<div class="ring-center"><span class="ring-val">' + centerLabel + '</span><span class="ring-unit">' + count + '/' + goal + '</span></div></div>';
+    html += '<div class="ring-card' + (done ? " ring-done" : "") + '" onclick="toggleCustomHabit(\'' + habit.id + '\')">';
+    html += '<div class="ring-wrap">' + segmentRingSVG(count, goal) + '<div class="ring-center"><span class="ring-val">' + centerLabel + '</span><span class="ring-unit">' + count + '/' + goal + '</span></div></div>';
     html += '<div class="ring-name">' + (habit.name || habit.id) + '</div>';
     html += '<div class="ring-cadence">' + goal + 'x/week</div></div>';
   });
