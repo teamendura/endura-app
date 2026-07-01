@@ -343,11 +343,12 @@
       <input type="text" id="new-name" placeholder="e.g. Anna Smith" />
     </div>
     <div class="form-group">
-      <label for="new-uid">Athlete user ID</label>
-      <input type="text" id="new-uid" placeholder="Firebase UID or email" />
+      <label for="new-uid">Athlete's Firebase UID</label>
+      <input type="text" id="new-uid" placeholder="e.g. cpWyfV3NHJg38AzuVSGutskwCno1 (not an email)" />
     </div>
     <button class="btn-add" id="add-btn" onclick="addUser()">+ Add athlete</button>
   </div>
+  <p style="font-size:12px;color:#6b8f72;margin:-1.5rem 0 2rem;">Find a UID in Firebase Console → Authentication → Users tab.</p>
 
   <div class="section-label">Your athletes</div>
   <div id="user-list"><div class="loading">Loading athletes…</div></div>
@@ -358,7 +359,7 @@
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
   import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-  import { getFirestore, doc, getDoc, setDoc, updateDoc, deleteField, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+  import { getFirestore, doc, getDoc, setDoc, updateDoc, deleteField, FieldPath, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
   // ─── REPLACE THIS WITH YOUR FIREBASE CONFIG ───────────────────────────────
   const firebaseConfig = {
@@ -371,16 +372,16 @@
   };
   // ──────────────────────────────────────────────────────────────────────────
 
-  // All available tiles — add/remove from this list to match your app
+  // Tiles must match the ring/habit ids used in index.html exactly (case-sensitive).
+  // Steps, Meditation, and Workout are built-in rings; the rest are per-program custom habits.
   const ALL_TILES = [
-    { id: "steps",       label: "Steps",        icon: "👣" },
-    { id: "sauna",       label: "Sauna",         icon: "🧖" },
-    { id: "coldPlunge",  label: "Cold plunge",   icon: "🧊" },
-    { id: "meditation",  label: "Meditation",    icon: "🧘" },
-    { id: "sleep",       label: "Sleep",         icon: "😴" },
-    { id: "nutrition",   label: "Nutrition",     icon: "🥗" },
-    { id: "workout",     label: "Workout",       icon: "🏋️" },
-    { id: "hrv",         label: "HRV",           icon: "💓" },
+    { id: "steps",      label: "Steps",       icon: "\ud83d\udc63" },
+    { id: "meditation", label: "Meditation",  icon: "\ud83e\uddd8" },
+    { id: "workout",    label: "Workout",     icon: "\ud83c\udfcb\ufe0f" },
+    { id: "sauna",      label: "Sauna",       icon: "\ud83e\uddd6" },
+    { id: "coldplunge", label: "Cold plunge", icon: "\ud83e\uddca" },
+    { id: "yoga",       label: "Yoga",        icon: "\ud83e\uddd8" },
+    { id: "cycling",    label: "Cycling",     icon: "\ud83d\udeb4" },
   ];
 
   const app = initializeApp(firebaseConfig);
@@ -389,9 +390,24 @@
 
   let currentCoachUid = null;
 
-  // Guard: redirect to login if not authenticated
-  onAuthStateChanged(auth, (user) => {
+  // Guard: redirect to login if not authenticated, or if authenticated but not a coach/admin
+  const ALLOWED_ROLES = ["coach", "admin"];
+  onAuthStateChanged(auth, async (user) => {
     if (!user) {
+      window.location.href = "admin.html";
+      return;
+    }
+    try {
+      const roleDoc = await getDoc(doc(db, "users", user.uid));
+      const roleData = roleDoc.exists() ? roleDoc.data() : {};
+      if (!ALLOWED_ROLES.includes(roleData.role)) {
+        await signOut(auth);
+        window.location.href = "admin.html";
+        return;
+      }
+    } catch (err) {
+      console.error(err);
+      await signOut(auth);
       window.location.href = "admin.html";
       return;
     }
@@ -488,8 +504,15 @@
     });
 
     try {
+      // 1. Update the coach's own roster (for display in this dashboard)
       const coachRef = doc(db, "coachSettings", currentCoachUid);
       await updateDoc(coachRef, { [`athletes.${uid}.tiles`]: tiles });
+
+      // 2. Mirror the setting onto the athlete's own user doc — this is what
+      //    the live app (index.html) actually reads to decide what to show.
+      const userRef = doc(db, "users", uid);
+      await setDoc(userRef, { enabledTiles: tiles }, { merge: true });
+
       const statusEl = document.getElementById(`saved-${uid}`);
       statusEl.classList.add("visible");
       setTimeout(() => statusEl.classList.remove("visible"), 2000);
@@ -504,6 +527,14 @@
     const name = document.getElementById("new-name").value.trim();
     const uid = document.getElementById("new-uid").value.trim();
     if (!name || !uid) { showToast("Please enter both a name and a user ID."); return; }
+
+    // Firestore treats "." as a nested-field separator in dotted update paths,
+    // so an email (or anything with a dot/@) silently breaks toggle & remove.
+    // Firebase UIDs are alphanumeric only — reject anything else up front.
+    if (uid.includes("@") || uid.includes(".")) {
+      showToast("Please enter the athlete's Firebase UID, not their email address.");
+      return;
+    }
 
     const btn = document.getElementById("add-btn");
     btn.disabled = true;
@@ -537,7 +568,14 @@
     if (!confirm(`Remove ${name} from your athlete list?`)) return;
     try {
       const coachRef = doc(db, "coachSettings", currentCoachUid);
-      await updateDoc(coachRef, { [`athletes.${uid}`]: deleteField() });
+      // IMPORTANT: We use FieldPath here instead of a dotted string like
+      // `athletes.${uid}`. Firestore treats every "." in a STRING field path
+      // as a nested-map separator — so a uid containing dots (e.g. a leftover
+      // email-based entry) would silently target the wrong, non-existent path
+      // and delete nothing. FieldPath("athletes", uid) treats each argument as
+      // one literal path segment, so it works correctly no matter what
+      // characters are in the key.
+      await updateDoc(coachRef, new FieldPath("athletes", uid), deleteField());
       showToast(`${name} removed.`);
     } catch (err) {
       showToast("Failed to remove — please try again.");
